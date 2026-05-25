@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Secure Log Console | Tamper-Evident Logging System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0F0D17;
+    --surface:   #1A1726;
+    --surface2:  #241F35;
+    --surface3:  #2E2845;
+    --border:    rgba(167,139,250,0.12);
+    --border2:   rgba(167,139,250,0.22);
+    --lavender:  #A78BFA;
+    --teal:      #5EEAD4;
+    --coral:     #FB7185;
+    --moss:      #86EFAC;
+    --periwinkle:#818CF8;
+    --fg:        #F0EEFF;
+    --muted:     #7C7A9A;
+    --radius:    14px;
+    --font-mono: 'Space Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+
+  /* ─── BACKGROUND MESH ─── */
+  .bg-mesh {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 15% 10%, rgba(167,139,250,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 85% 90%, rgba(94,234,212,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 50% 50%, rgba(129,140,248,0.04) 0%, transparent 70%);
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; height: 64px;
+    background: rgba(15,13,23,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(129,140,248,0.2));
+    border: 1px solid rgba(167,139,250,0.3);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 18px; height: 18px; color: var(--lavender); }
+  .logo-text h1 { font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -0.2px; }
+  .logo-text p  { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 500; font-family: var(--font-mono);
+    border: 1px solid; transition: all 0.4s ease;
+  }
+  .status-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-idle    { background: rgba(124,122,154,0.1); border-color: rgba(124,122,154,0.3); color: var(--muted); }
+  .status-idle .dot { background: var(--muted); }
+  .status-verifying { background: rgba(129,140,248,0.1); border-color: rgba(129,140,248,0.3); color: var(--periwinkle); }
+  .status-verifying .dot { background: var(--periwinkle); animation: pulse 1s ease-in-out infinite; }
+  .status-secure  { background: rgba(134,239,172,0.1); border-color: rgba(134,239,172,0.3); color: var(--moss); }
+  .status-secure .dot { background: var(--moss); }
+  .status-compromised { background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.3); color: var(--coral); }
+  .status-compromised .dot { background: var(--coral); animation: pulse 0.8s ease-in-out infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes glow {
+    0%,100%{box-shadow:0 0 20px rgba(167,139,250,0.15)}
+    50%{box-shadow:0 0 35px rgba(167,139,250,0.28)}
+  }
+  @keyframes shimmer {
+    0%{background-position:-200% 0} 100%{background-position:200% 0}
+  }
+  @keyframes chainPulse {
+    0%,100%{opacity:0.4;transform:scaleY(1)}
+    50%{opacity:1;transform:scaleY(1.05)}
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    position: relative; z-index: 1;
+    padding: 100px 32px 80px;
+    text-align: center;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 18px; border-radius: 30px;
+    background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25);
+    font-size: 13px; font-weight: 500; color: var(--lavender);
+    margin-bottom: 32px; font-family: var(--font-mono);
+    animation: fadeUp 0.6s ease both;
+  }
+  .ping {
+    position: relative; width: 8px; height: 8px;
+  }
+  .ping::before {
+    content:''; position:absolute; inset:0;
+    border-radius:50%; background:var(--lavender);
+    animation: ping 1.5s cubic-bezier(0,0,0.2,1) infinite;
+  }
+  .ping::after {
+    content:''; position:absolute; inset:0;
+    border-radius:50%; background:var(--lavender);
+  }
+  @keyframes ping { 75%,100%{transform:scale(2);opacity:0} }
+
+  .hero h2 {
+    font-size: clamp(42px, 7vw, 80px);
+    font-weight: 700; letter-spacing: -2px; line-height: 1.05;
+    background: linear-gradient(135deg, var(--lavender) 0%, var(--periwinkle) 50%, var(--teal) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 20px;
+    animation: fadeUp 0.6s 0.1s ease both;
+  }
+  .hero-sub {
+    font-size: 18px; font-weight: 500; color: var(--periwinkle);
+    margin-bottom: 16px;
+    animation: fadeUp 0.6s 0.2s ease both;
+  }
+  .hero-desc {
+    max-width: 560px; margin: 0 auto 48px;
+    color: var(--muted); font-size: 15px; line-height: 1.7;
+    animation: fadeUp 0.6s 0.3s ease both;
+  }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 16px 36px; border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--lavender), var(--periwinkle));
+    color: #0F0D17; font-weight: 700; font-size: 16px;
+    border: none; cursor: pointer;
+    box-shadow: 0 8px 32px rgba(167,139,250,0.3);
+    transition: all 0.3s ease;
+    animation: fadeUp 0.6s 0.4s ease both;
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(167,139,250,0.4);
+  }
+  .btn-primary svg { width: 20px; height: 20px; }
+
+  /* Feature cards */
+  .features {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px; max-width: 900px; margin: 72px auto 0;
+    animation: fadeUp 0.6s 0.5s ease both;
+  }
+  .feature-card {
+    padding: 28px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--border);
+    transition: all 0.3s ease; text-align: left;
+  }
+  .feature-card:hover { border-color: var(--border2); transform: translateY(-3px); }
+  .feature-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .feature-icon svg { width: 20px; height: 20px; }
+  .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .feature-card p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  /* ─── SECTION LABELS ─── */
+  .section { position: relative; z-index: 1; padding: 60px 32px; }
+  .section-label {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 28px;
+  }
+  .section-label-icon {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .section-label-icon svg { width: 18px; height: 18px; }
+  .section-label h2 { font-size: 20px; font-weight: 700; }
+  .section-label p  { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ─── UPLOAD ─── */
+  #upload-section { max-width: 680px; margin: 0 auto; }
+  .dropzone {
+    min-height: 200px; border-radius: var(--radius);
+    border: 2px dashed rgba(167,139,250,0.25);
+    background: var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; cursor: pointer; position: relative;
+    transition: all 0.3s ease; padding: 40px;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--lavender);
+    background: rgba(167,139,250,0.06);
+    box-shadow: 0 0 30px rgba(167,139,250,0.08);
+  }
+  .dropzone.has-file { border-color: rgba(134,239,172,0.4); background: rgba(134,239,172,0.04); }
+  .dropzone input[type=file] { position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%; }
+  .dropzone-icon {
+    width: 60px; height: 60px; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dropzone-icon svg { width: 28px; height: 28px; }
+  .dropzone-text { text-align: center; }
+  .dropzone-text strong { display: block; font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .dropzone-text span  { font-size: 13px; color: var(--muted); }
+
+  .format-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; justify-content: center; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 12px; color: var(--lavender);
+  }
+
+  .info-box {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 14px 16px; border-radius: 10px;
+    background: rgba(129,140,248,0.08); border: 1px solid rgba(129,140,248,0.2);
+    font-size: 13px; color: var(--muted); margin-top: 16px;
+  }
+  .info-box svg { width: 16px; height: 16px; color: var(--periwinkle); flex-shrink: 0; margin-top: 2px; }
+
+  .btn-verify {
+    display: flex; align-items: center; gap: 10px; justify-content: center;
+    width: 100%; padding: 16px; border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--teal), var(--periwinkle));
+    color: #0F0D17; font-weight: 700; font-size: 15px;
+    border: none; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(94,234,212,0.25);
+    transition: all 0.3s ease; margin-top: 24px;
+  }
+  .btn-verify:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 32px rgba(94,234,212,0.35);
+  }
+  .btn-verify:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-verify svg { width: 18px; height: 18px; }
+  .spinner { animation: spin 0.8s linear infinite; }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    height: 1px; background: var(--border);
+    max-width: 1100px; margin: 0 auto;
+  }
+
+  /* ─── ALERTS ─── */
+  #alerts-section { max-width: 1100px; margin: 0 auto; }
+  .alerts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .alert-card {
+    padding: 20px; border-radius: var(--radius);
+    background: rgba(251,113,133,0.07); border: 1px solid rgba(251,113,133,0.25);
+    position: relative; overflow: hidden; transition: all 0.3s ease;
+  }
+  .alert-card:hover { border-color: rgba(251,113,133,0.4); }
+  .alert-card::before {
+    content:''; position:absolute; top:-20px; right:-20px;
+    width:80px; height:80px; border-radius:50%;
+    background: rgba(251,113,133,0.08); filter: blur(20px);
+  }
+  .alert-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .alert-card-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--coral); font-size: 14px; }
+  .alert-card-title svg { width: 16px; height: 16px; }
+  .alert-type-badge {
+    font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+    padding: 3px 8px; border-radius: 6px;
+    background: rgba(251,113,133,0.2); color: var(--coral); text-transform: uppercase;
+  }
+  .alert-card p { font-size: 13px; line-height: 1.6; color: var(--fg); margin-bottom: 12px; }
+  .alert-card-time { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+  .alert-card-time svg { width: 12px; height: 12px; }
+
+  /* ─── DASHBOARD ─── */
+  #dashboard-section { max-width: 1100px; margin: 0 auto; }
+  .view-toggle { display: flex; gap: 4px; padding: 4px; background: var(--surface2); border-radius: 10px; }
+  .toggle-btn {
+    padding: 7px 16px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 500; font-family: var(--font-sans);
+    color: var(--muted); background: transparent; transition: all 0.2s;
+  }
+  .toggle-btn.active { background: var(--lavender); color: #0F0D17; font-weight: 600; }
+
+  .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px; }
+  @media(max-width: 900px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); overflow: hidden;
+    display: flex; flex-direction: column; height: 500px;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .panel-header-left { display: flex; align-items: center; gap: 10px; }
+  .panel-icon {
+    width: 32px; height: 32px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .panel-icon svg { width: 15px; height: 15px; }
+  .panel-title { font-size: 14px; font-weight: 600; }
+  .mini-badge {
+    font-size: 11px; font-family: var(--font-mono); font-weight: 600;
+    padding: 3px 10px; border-radius: 6px;
+  }
+  .panel-body { flex: 1; overflow-y: auto; }
+
+  /* Log entries */
+  .log-entry {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid rgba(167,139,250,0.06);
+    cursor: pointer; transition: background 0.2s;
+  }
+  .log-entry:hover { background: rgba(167,139,250,0.05); }
+  .log-entry.selected { background: rgba(167,139,250,0.08); }
+  .log-entry.tampered { background: rgba(251,113,133,0.06); }
+  .log-entry.tampered:hover { background: rgba(251,113,133,0.1); }
+  .log-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); display: flex; gap: 8px; margin-bottom: 5px; }
+  .log-msg { font-family: var(--font-mono); font-size: 12px; color: var(--fg); line-height: 1.5; word-break: break-all; }
+  .log-tamper-badge {
+    font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+    padding: 2px 7px; border-radius: 5px; white-space: nowrap; flex-shrink: 0;
+    background: rgba(251,113,133,0.2); color: var(--coral);
+    text-transform: uppercase; margin-top: 2px;
+  }
+  .log-status-icon { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+
+  /* Hash chain */
+  .hash-block {
+    padding: 14px 16px; margin: 10px; border-radius: 10px;
+    border: 1px solid; transition: all 0.2s;
+  }
+  .hash-block.valid   { border-color: rgba(134,239,172,0.25); background: rgba(134,239,172,0.05); }
+  .hash-block.invalid { border-color: rgba(251,113,133,0.35); background: rgba(251,113,133,0.08); }
+  .hash-block.neutral { border-color: rgba(167,139,250,0.15); background: rgba(167,139,250,0.04); }
+  .hash-block.selected { box-shadow: 0 0 0 2px rgba(167,139,250,0.4); }
+  .hash-block-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .hash-block-id { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+  .hash-block-id .genesis-badge {
+    display: inline-block; font-size: 9px; font-weight: 600;
+    padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+    background: rgba(129,140,248,0.2); color: var(--periwinkle);
+  }
+  .hash-field { margin-bottom: 8px; }
+  .hash-field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+  .hash-value {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 6px 10px; border-radius: 6px; background: rgba(15,13,23,0.6);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .hash-value.current   { color: var(--lavender); }
+  .hash-value.previous  { color: var(--teal); }
+  .hash-value.corrupted { color: var(--coral); }
+  .chain-connector {
+    display: flex; justify-content: center; padding: 4px 0;
+  }
+  .chain-connector svg { width: 16px; height: 16px; }
+
+  /* Tamper badge in hash block */
+  .tamper-indicator {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 10px; padding: 7px 10px; border-radius: 7px;
+    background: rgba(251,113,133,0.15); font-size: 11px; color: var(--coral); font-weight: 500;
+  }
+  .tamper-indicator svg { width: 13px; height: 13px; }
+
+  /* Verification panel */
+  .verif-body {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; text-align: center; gap: 20px;
+  }
+  .verif-icon-wrap {
+    width: 80px; height: 80px; border-radius: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .verif-icon-wrap svg { width: 36px; height: 36px; }
+  .verif-status-title { font-size: 18px; font-weight: 700; }
+  .verif-status-sub   { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .verif-stats { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+  .verif-stat-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-radius: 8px; background: rgba(15,13,23,0.5);
+  }
+  .verif-stat-label { font-size: 13px; color: var(--muted); }
+  .verif-stat-value { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+
+  /* ─── AUDIT REPORT ─── */
+  #audit-section { max-width: 800px; margin: 0 auto; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 24px; }
+  @media(max-width:600px) { .stats-grid { grid-template-columns: 1fr; } }
+  .stat-card {
+    padding: 24px; border-radius: var(--radius);
+    border: 1px solid; transition: all 0.2s;
+  }
+  .stat-card-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .stat-card-icon svg { width: 18px; height: 18px; }
+  .stat-card-value { font-size: 32px; font-weight: 700; margin-bottom: 4px; font-family: var(--font-mono); }
+  .stat-card-label { font-size: 13px; color: var(--muted); }
+  .stat-card.neutral { border-color: rgba(129,140,248,0.25); background: rgba(129,140,248,0.06); }
+  .stat-card.neutral .stat-card-value { color: var(--periwinkle); }
+  .stat-card.neutral .stat-card-icon { background: rgba(129,140,248,0.15); color: var(--periwinkle); }
+  .stat-card.success { border-color: rgba(134,239,172,0.25); background: rgba(134,239,172,0.05); }
+  .stat-card.success .stat-card-value { color: var(--moss); }
+  .stat-card.success .stat-card-icon { background: rgba(134,239,172,0.15); color: var(--moss); }
+  .stat-card.danger  { border-color: rgba(251,113,133,0.25); background: rgba(251,113,133,0.06); }
+  .stat-card.danger  .stat-card-value { color: var(--coral); }
+  .stat-card.danger  .stat-card-icon  { background: rgba(251,113,133,0.15); color: var(--coral); }
+
+  .summary-box {
+    margin-top: 20px; padding: 24px; border-radius: var(--radius);
+    border: 1px solid; line-height: 1.7; font-size: 14px; color: var(--muted);
+  }
+  .summary-box h3 { font-size: 15px; font-weight: 600; color: var(--fg); margin-bottom: 10px; }
+  .summary-box.ok { border-color: rgba(134,239,172,0.25); background: rgba(134,239,172,0.04); }
+  .summary-box.bad{ border-color: rgba(251,113,133,0.25); background: rgba(251,113,133,0.04); }
+
+  .btn-download {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--lavender), var(--periwinkle));
+    color: #0F0D17; font-weight: 700; font-size: 14px;
+    border: none; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(167,139,250,0.25);
+    transition: all 0.3s ease;
+  }
+  .btn-download:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(167,139,250,0.35); }
+  .btn-download svg { width: 16px; height: 16px; }
+
+  /* ─── PIPELINE ─── */
+  #pipeline-section { max-width: 1100px; margin: 0 auto; }
+  .pipeline-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  @media(max-width:900px) { .pipeline-grid { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:500px) { .pipeline-grid { grid-template-columns: 1fr; } }
+  .pipeline-card {
+    padding: 16px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    transition: all 0.3s; cursor: default;
+  }
+  .pipeline-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+  .pipeline-card.highlight { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.35); }
+  .pipeline-card-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 12px;
+  }
+  .pipeline-card-icon svg { width: 16px; height: 16px; }
+  .pipeline-step { font-size: 10px; color: var(--muted); font-family: var(--font-mono); margin-bottom: 4px; }
+  .pipeline-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .pipeline-card p  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .key-badge { font-size: 9px; padding: 1px 7px; border-radius: 4px; background: rgba(167,139,250,0.2); color: var(--lavender); margin-left: 6px; vertical-align: middle; font-weight: 600; }
+  .loop-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 24px; border-radius: 30px; margin-top: 24px;
+    background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.25);
+    color: var(--lavender); font-size: 13px; font-weight: 500;
+    animation: glow 3s ease-in-out infinite;
+  }
+  .loop-badge svg { width: 16px; height: 16px; }
+
+  /* ─── INFO CARDS ─── */
+  #info-section { max-width: 1100px; margin: 0 auto; }
+  .info-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  @media(max-width:800px) { .info-grid { grid-template-columns: 1fr; } }
+  .info-card {
+    padding: 24px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .info-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .info-card-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .info-card-icon svg { width: 16px; height: 16px; }
+  .info-card h3 { font-size: 15px; font-weight: 600; }
+  .info-item { padding: 12px; border-radius: 10px; background: rgba(15,13,23,0.5); border: 1px solid rgba(167,139,250,0.08); margin-bottom: 8px; }
+  .info-item h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .info-item p  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .limit-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(15,13,23,0.5); border: 1px solid rgba(167,139,250,0.08); margin-bottom: 8px; }
+  .limit-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); flex-shrink: 0; margin-top: 5px; }
+  .limit-item span { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .status-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 10px; background: rgba(15,13,23,0.5); border: 1px solid rgba(167,139,250,0.08); margin-bottom: 8px; }
+  .status-item-label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .status-item-label svg { width: 13px; height: 13px; }
+  .status-item-val { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+
+  /* ─── FOOTER ─── */
+  footer {
+    position: relative; z-index: 1;
+    border-top: 1px solid var(--border);
+    background: rgba(26,23,38,0.6); backdrop-filter: blur(10px);
+    padding: 56px 32px 36px;
+  }
+  .footer-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 40px; max-width: 1100px; margin: 0 auto; }
+  @media(max-width:700px) { .footer-grid { grid-template-columns: 1fr; } }
+  .footer-brand p { font-size: 13px; color: var(--muted); line-height: 1.7; margin-top: 12px; max-width: 300px; }
+  .footer-col h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .footer-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .footer-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .footer-list-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .footer-list-icon svg { width: 12px; height: 12px; }
+  .footer-bottom {
+    max-width: 1100px; margin: 40px auto 0;
+    border-top: 1px solid var(--border); padding-top: 28px;
+    text-align: center; font-size: 12px; color: var(--muted); line-height: 1.8;
+  }
+
+  /* ─── HIDDEN/SHOWN SECTIONS ─── */
+  .hidden { display: none !important; }
+  .section-animate { animation: fadeUp 0.5s ease both; }
+
+  /* ─── SHIMMER ─── */
+  .shimmer-row {
+    height: 56px; border-radius: 8px; margin: 10px 20px;
+    background: linear-gradient(90deg, var(--surface2) 0%, var(--surface3) 50%, var(--surface2) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Utility */
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+  .text-center  { text-align: center; }
+  .mt-4  { margin-top: 16px; }
+  .mt-6  { margin-top: 24px; }
+</style>
+</head>
+<body>
+
+<div class="bg-mesh"></div>
+
+<!-- ═══════════════════════════════════════ HEADER ═══════════════════════════════════════ -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>Secure Log Console</h1>
+      <p>Tamper-Evident Logging</p>
+    </div>
+  </div>
+  <div id="status-badge" class="status-badge status-idle">
+    <span class="dot"></span>
+    <span id="status-label">System Ready</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════ HERO ═══════════════════════════════════════ -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="ping"></span>
+    System Online
+  </div>
+  <h2>Secure Log Console</h2>
+  <p class="hero-sub">Tamper-Evident Logging System for Forensic Analysis</p>
+  <p class="hero-desc">
+    Upload and verify log files using cryptographic hash chaining. 
+    Detect any unauthorized modification, deletion, or injection of logs with mathematical certainty.
+  </p>
+  <button class="btn-primary" onclick="document.getElementById('upload-wrap').scrollIntoView({behavior:'smooth'})">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    Upload Log File
+  </button>
+
+  <div class="features">
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(167,139,250,0.12)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+      </div>
+      <h3>SHA-256 Hash Chaining</h3>
+      <p>Each log entry is cryptographically linked to the previous one, creating an unbreakable chain of integrity.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(94,234,212,0.12)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      </div>
+      <h3>Instant Detection</h3>
+      <p>Any modification, deletion, or insertion of logs is immediately detectable during verification.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(129,140,248,0.12)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h3>Forensic Ready</h3>
+      <p>Provides verifiable proof of tampering for legal proceedings and security investigations.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════ UPLOAD ═══════════════════════════════════════ -->
+<section class="section" id="upload-wrap">
+  <div id="upload-section">
+    <div class="section-label" style="justify-content:center;flex-direction:column;align-items:center;text-align:center;margin-bottom:32px">
+      <h2 style="font-size:24px;font-weight:700;margin-bottom:6px">Upload Log File</h2>
+      <p style="color:var(--muted);font-size:14px">Drag and drop your log file or click to browse</p>
+    </div>
+
+    <div id="dropzone" class="dropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave()" ondrop="handleDrop(event)">
+      <input type="file" accept=".log,.txt,.csv" onchange="handleFileChange(event)" id="file-input" />
+      <div id="dropzone-content">
+        <div class="dropzone-icon" style="background:var(--surface2)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="dropzone-text">
+          <strong>Drop your file here, or click to browse</strong>
+          <span>Supports .log, .txt, .csv files</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="format-chips">
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        .log
+      </span>
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        .txt
+      </span>
+      <span class="chip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        .csv
+      </span>
+    </div>
+
+    <div class="info-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      Currently optimized for sample testing datasets. Database-scale ingestion coming soon.
+    </div>
+
+    <button class="btn-verify" id="verify-btn" onclick="startVerification()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <span id="verify-btn-label">Start Verification</span>
+    </button>
+  </div>
+</section>
+
+<!-- ═══ ADD LOG ENTRY ═══ -->
+<section class="section" id="addlog-section-wrap">
+  <div style="max-width:680px;margin:0 auto">
+    <div class="section-label" style="justify-content:center;flex-direction:column;align-items:center;text-align:center;margin-bottom:24px">
+      <h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Add Log Entry</h2>
+      <p style="color:var(--muted);font-size:14px">Append a new entry to the server log, then seal with hash chain</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:12px">
+      <input id="log-event-type" type="text" placeholder="Event type (e.g. LOGIN)"
+        style="padding:12px 16px;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border2);color:var(--fg);font-family:var(--font-mono);font-size:13px;outline:none;width:100%"/>
+      <input id="log-message" type="text" placeholder="Log message"
+        style="padding:12px 16px;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border2);color:var(--fg);font-family:var(--font-sans);font-size:13px;outline:none;width:100%"/>
+    </div>
+    <div style="display:flex;gap:12px">
+      <button onclick="addLog()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:var(--radius);background:linear-gradient(135deg,var(--lavender),var(--periwinkle));color:#0F0D17;font-weight:700;font-size:14px;border:none;cursor:pointer;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Log
+      </button>
+      <button onclick="applyHashChain()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:var(--radius);background:var(--surface2);border:1px solid var(--border2);color:var(--teal);font-weight:700;font-size:14px;cursor:pointer;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        Apply Hash Chain
+      </button>
+    </div>
+    <div id="addlog-msg" style="margin-top:12px;font-size:13px;font-family:var(--font-mono);color:var(--muted);text-align:center;min-height:20px"></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════ ALERTS ═══════════════════════════════════════ -->
+<section class="section hidden" id="alerts-section-wrap">
+  <div id="alerts-section">
+    <div class="section-label">
+      <div class="section-label-icon" style="background:rgba(251,113,133,0.15)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div>
+        <h2>Security Alerts</h2>
+        <p id="alert-count-label">0 integrity violations detected</p>
+      </div>
+    </div>
+    <div class="alerts-grid" id="alerts-grid"></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ DASHBOARD ═══════════════════════════════════════ -->
+<section class="section hidden" id="dashboard-section-wrap">
+  <div id="dashboard-section">
+    <div class="flex-between" style="margin-bottom:24px;flex-wrap:wrap;gap:16px">
+      <div>
+        <h2 style="font-size:20px;font-weight:700">Log Analysis Dashboard</h2>
+        <p style="font-size:13px;color:var(--muted);margin-top:4px">Analyze log entries and their cryptographic chain integrity</p>
+      </div>
+      <div class="view-toggle">
+        <button class="toggle-btn" id="toggle-raw" onclick="setViewMode('raw')">Raw Logs</button>
+        <button class="toggle-btn active" id="toggle-verified" onclick="setViewMode('verified')">Verified Logs</button>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <!-- Log Entries Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-header-left">
+            <div class="panel-icon" style="background:rgba(167,139,250,0.15)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <span class="panel-title">Log Entries</span>
+          </div>
+          <span id="log-count-badge" class="mini-badge" style="background:var(--surface2);color:var(--muted)">0 entries</span>
+        </div>
+        <div class="panel-body" id="log-entries-panel"></div>
+      </div>
+
+      <!-- Hash Chain Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-header-left">
+            <div class="panel-icon" style="background:rgba(94,234,212,0.15)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+              </svg>
+            </div>
+            <span class="panel-title">Hash Chain</span>
+          </div>
+          <span class="mini-badge" style="background:rgba(94,234,212,0.12);color:#5EEAD4">SHA-256</span>
+        </div>
+        <div class="panel-body" id="hash-chain-panel"></div>
+      </div>
+
+      <!-- Verification Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-header-left">
+            <div class="panel-icon" style="background:rgba(129,140,248,0.15)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+            </div>
+            <span class="panel-title">Verification Status</span>
+          </div>
+        </div>
+        <div class="verif-body" id="verification-panel">
+          <div class="verif-icon-wrap" style="background:rgba(61,53,84,0.8)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div>
+            <div class="verif-status-title" style="color:var(--muted)">Awaiting Verification</div>
+            <div class="verif-status-sub">Upload a log file to begin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════ AUDIT REPORT ═══════════════════════════════════════ -->
+<section class="section hidden" id="audit-section-wrap">
+  <div id="audit-section">
+    <div class="flex-between" style="flex-wrap:wrap;gap:16px;margin-bottom:8px">
+      <div class="section-label" style="margin-bottom:0">
+        <div class="section-label-icon" style="background:rgba(129,140,248,0.15)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+          </svg>
+        </div>
+        <div>
+          <h2>Audit Report</h2>
+          <p>Verification summary and statistics</p>
+        </div>
+      </div>
+      <button class="btn-download" onclick="downloadReport()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Report
+      </button>
+    </div>
+
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="summary-box" id="summary-box"></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════ PIPELINE ═══════════════════════════════════════ -->
+<section class="section" id="pipeline-section">
+  <div class="section-label" style="justify-content:center;flex-direction:column;align-items:center;text-align:center;margin-bottom:40px">
+    <h2 style="font-size:22px;font-weight:700;margin-bottom:6px">Continuous Hashing & Forensic Pipeline</h2>
+    <p style="color:var(--muted);font-size:14px;max-width:560px">A scalable approach to maintaining log integrity across multiple verification cycles</p>
+  </div>
+
+  <div class="pipeline-grid">
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+      <div class="pipeline-step">Step 1</div>
+      <h4>Upload Data</h4>
+      <p>Upload .csv, .log, or .txt files</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg></div>
+      <div class="pipeline-step">Step 2</div>
+      <h4>Preprocessing</h4>
+      <p>Assign timestamps and unique IDs</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
+      <div class="pipeline-step">Step 3</div>
+      <h4>Hash Generation</h4>
+      <p>Apply SHA-256 hashing</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></div>
+      <div class="pipeline-step">Step 4</div>
+      <h4>Hash Chaining</h4>
+      <p>Link logs using previous hash</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div class="pipeline-step">Step 5</div>
+      <h4>Verification Engine</h4>
+      <p>Recompute and validate chain</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="pipeline-step">Step 6</div>
+      <h4>Tamper Detection</h4>
+      <p>Detect modification / deletion / insertion</p>
+    </div>
+    <div class="pipeline-card">
+      <div class="pipeline-card-icon" style="background:rgba(61,53,84,0.8)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+      <div class="pipeline-step">Step 7</div>
+      <h4>Export Hashed Data</h4>
+      <p>Download verified logs</p>
+    </div>
+    <div class="pipeline-card highlight">
+      <div class="pipeline-card-icon" style="background:rgba(167,139,250,0.2)"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></div>
+      <div class="pipeline-step">Step 8 <span class="key-badge">Key</span></div>
+      <h4>Re-Ingestion Loop</h4>
+      <p>Re-upload logs and extend chain</p>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:24px">
+    <span class="loop-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      Continuous Integrity Loop
+    </span>
+  </div>
+
+  <div style="margin-top:24px;padding:24px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--border)">
+    <p style="text-align:center;color:var(--muted);font-size:14px;line-height:1.8;max-width:780px;margin:0 auto">
+      This system enables continuous log integrity by allowing hashed data to be exported, reused, and re-ingested. 
+      Each cycle extends the hash chain, ensuring that logs remain tamper-evident over time. 
+      This creates a scalable forensic pipeline where data can be repeatedly verified, monitored, and secured.
+    </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════ INFO SECTION ═══════════════════════════════════════ -->
+<section class="section" id="info-section">
+  <div class="info-grid">
+    <!-- Design Decisions -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <div class="info-card-icon" style="background:rgba(167,139,250,0.15)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3>Design Decisions</h3>
+      </div>
+      <div class="info-item"><h4>SHA-256 Hashing</h4><p>Chosen for simplicity and reliability across platforms</p></div>
+      <div class="info-item"><h4>File-Based Input</h4><p>Used for easy testing and demonstration purposes</p></div>
+      <div class="info-item"><h4>Linear Chaining</h4><p>Used for clarity over complexity in chain visualization</p></div>
+    </div>
+
+    <!-- Limitations -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <div class="info-card-icon" style="background:rgba(251,113,133,0.15)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <h3>Limitations</h3>
+      </div>
+      <div class="limit-item"><span class="limit-dot"></span><span>Detects tampering but does not prevent it</span></div>
+      <div class="limit-item"><span class="limit-dot"></span><span>Performance may degrade with very large logs</span></div>
+      <div class="limit-item"><span class="limit-dot"></span><span>Currently not real-time</span></div>
+      <div class="limit-item"><span class="limit-dot"></span><span>Requires manual re-ingestion for continuous chaining</span></div>
+    </div>
+
+    <!-- System Status -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <div class="info-card-icon" style="background:rgba(94,234,212,0.15)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </div>
+        <h3>System Status</h3>
+      </div>
+      <div class="status-item">
+        <span class="status-item-label">Mode</span>
+        <span class="status-item-val" style="color:var(--periwinkle)">Test Mode</span>
+      </div>
+      <div class="status-item">
+        <span class="status-item-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Status
+        </span>
+        <span class="status-item-val" id="info-status">Idle</span>
+      </div>
+      <div class="status-item">
+        <span class="status-item-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Last Run
+        </span>
+        <span class="status-item-val" id="info-last-run" style="color:var(--fg)">—</span>
+      </div>
+      <div class="status-item">
+        <span class="status-item-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg>
+          Logs Processed
+        </span>
+        <span class="status-item-val" id="info-logs" style="color:var(--fg)">0</span>
+      </div>
+      <div class="status-item">
+        <span class="status-item-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+          Chain Length
+        </span>
+        <span class="status-item-val" id="info-chain" style="color:var(--fg)">0</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════════════════════════════ FOOTER ═══════════════════════════════════════ -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>Secure Log Console</h1>
+        </div>
+      </div>
+      <p>A tamper-evident logging system for secure forensic analysis using cryptographic hash chaining.</p>
+    </div>
+    <div class="footer-col">
+      <h3>Key Features</h3>
+      <ul class="footer-list">
+        <li>
+          <span class="footer-list-icon" style="background:rgba(167,139,250,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          SHA-256 Hash Chaining
+        </li>
+        <li>
+          <span class="footer-list-icon" style="background:rgba(94,234,212,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#5EEAD4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          Tamper Detection
+        </li>
+        <li>
+          <span class="footer-list-icon" style="background:rgba(129,140,248,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+          Forensic Analysis Ready
+        </li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h3>Technology</h3>
+      <ul class="footer-list">
+        <li>
+          <span class="footer-list-icon" style="background:rgba(134,239,172,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+          HTML / CSS / JavaScript
+        </li>
+        <li>
+          <span class="footer-list-icon" style="background:rgba(134,239,172,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+          SHA-256 Cryptography
+        </li>
+        <li>
+          <span class="footer-list-icon" style="background:rgba(134,239,172,0.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+          Hash Chain Verification
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>&copy; <span id="year"></span> Secure Log Console. Mini Project — Department of Computer Science and Business Systems, Dayananda Sagar College of Engineering.</p>
+    <p style="margin-top:6px;font-size:11px">Built by Ujjwal Moolchandani, Nimai R, Shreya M, Shreesha Gowda</p>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════ JAVASCRIPT ═══════════════════════════════════════ -->
+<script>
+// ── State
+const API_BASE = '';
+let uploadedFile = null;
+let logs = [];
+let verificationResult = null;
+let appStatus = 'idle';
+let selectedLogId = null;
+let viewMode = 'verified';
+let lastVerificationTime = null;
+
+// ── Year
+document.getElementById('year').textContent = new Date().getFullYear();
+
+// ── Sample data
+const sampleLogs = [
+  { id:1,  timestamp:'2026-02-04T14:00:01.234Z', message:'System initialized - Secure Log Console v1.0',                  currentHash:'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456', previousHash:'0000000000000000000000000000000000000000000000000000000000000000' },
+  { id:2,  timestamp:'2026-02-04T14:00:05.456Z', message:'User authentication module loaded successfully',                  currentHash:'b2c3d4e5f67890123456789012345678901abcdef1234567890abcdef1234567', previousHash:'a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456' },
+  { id:3,  timestamp:'2026-02-04T14:00:12.789Z', message:'Database connection established - PostgreSQL 15.2',               currentHash:'c3d4e5f678901234567890123456789012abcdef1234567890abcdef12345678', previousHash:'b2c3d4e5f67890123456789012345678901abcdef1234567890abcdef1234567' },
+  { id:4,  timestamp:'2026-02-04T14:00:18.012Z', message:'Security audit logging enabled for all endpoints',                currentHash:'d4e5f6789012345678901234567890123abcdef1234567890abcdef123456789', previousHash:'c3d4e5f678901234567890123456789012abcdef1234567890abcdef12345678' },
+  { id:5,  timestamp:'2026-02-04T14:01:02.345Z', message:'Admin user (admin@system.local) logged in from 192.168.1.100',   currentHash:'e5f67890123456789012345678901234abcdef1234567890abcdef1234567890', previousHash:'d4e5f6789012345678901234567890123abcdef1234567890abcdef123456789' },
+  { id:6,  timestamp:'2026-02-04T14:02:15.678Z', message:'Configuration backup completed - 1.2MB archived',                currentHash:'f678901234567890123456789012345abcdef1234567890abcdef12345678901', previousHash:'e5f67890123456789012345678901234abcdef1234567890abcdef1234567890' },
+  { id:7,  timestamp:'2026-02-04T14:05:30.901Z', message:'Firewall rule updated - Port 443 enabled for external access',    currentHash:'7890123456789012345678901234567abcdef1234567890abcdef123456789012', previousHash:'f678901234567890123456789012345abcdef1234567890abcdef12345678901' },
+  { id:8,  timestamp:'2026-02-04T14:10:45.234Z', message:'SSL certificate renewed - Valid until 2027-02-04',                currentHash:'890123456789012345678901234567abcdef1234567890abcdef1234567890123', previousHash:'7890123456789012345678901234567abcdef1234567890abcdef123456789012' },
+  { id:9,  timestamp:'2026-02-04T14:15:00.567Z', message:'Scheduled backup task initiated',                                 currentHash:'90123456789012345678901234567abcdef1234567890abcdef12345678901234', previousHash:'890123456789012345678901234567abcdef1234567890abcdef1234567890123' },
+  { id:10, timestamp:'2026-02-04T14:15:45.890Z', message:'Backup completed successfully - 256 files archived',              currentHash:'0123456789012345678901234567abcdef1234567890abcdef123456789012345', previousHash:'90123456789012345678901234567abcdef1234567890abcdef12345678901234' },
+];
+
+const tamperedLogs = [
+  ...sampleLogs.slice(0, 4),
+  { ...sampleLogs[4], message:'Unknown user logged in from suspicious IP 10.0.0.99', currentHash:'tampered_hash_breaks_chain_1234567890abcdef9876543210fedcba9876' },
+  ...sampleLogs.slice(5),
+];
+
+// ── Drag & Drop
+function handleDragOver(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('drag-over'); }
+function handleDragLeave()  { document.getElementById('dropzone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && isValidFile(file)) processFile(file);
+}
+function handleFileChange(e) {
+  const file = e.target.files[0];
+  if (file && isValidFile(file)) processFile(file);
+}
+function isValidFile(f) { return ['.log','.txt','.csv','.jsonl'].some(ext => f.name.toLowerCase().endsWith(ext)); }
+
+function processFile(file) {
+  uploadedFile = file;
+  setStatus('uploading');
+  const dz = document.getElementById('dropzone');
+  dz.classList.add('has-file');
+  document.getElementById('dropzone-content').innerHTML = `
+    <div class="dropzone-icon" style="background:rgba(134,239,172,0.15)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="dropzone-text">
+      <strong style="color:#86EFAC">${file.name}</strong>
+      <span>${formatSize(file.size)}</span>
+    </div>
+  `;
+  setTimeout(() => {
+    setStatus('idle');
+    document.getElementById('verify-btn').classList.remove('hidden');
+  }, 800);
+}
+
+function formatSize(b) {
+  if (!b) return '0 B';
+  const k = 1024, s = ['B','KB','MB','GB'];
+  const i = Math.floor(Math.log(b)/Math.log(k));
+  return parseFloat((b/Math.pow(k,i)).toFixed(2)) + ' ' + s[i];
+}
+
+// ── Verification
+async function startVerification() {
+  setStatus('verifying');
+  const btn = document.getElementById('verify-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>Verifying Hash Chain...</span>`;
+
+  // Show dashboard immediately with shimmer
+  showSection('dashboard-section-wrap');
+  showShimmer();
+
+  try {
+    const res  = await fetch(`${API_BASE}/verify`);
+    const data = await res.json();
+
+    // Map backend shape → frontend shape expected by all render functions
+    logs = data.logs.map(log => ({
+      id:           log.log_id,
+      timestamp:    log.timestamp,
+      message:      log.message,
+      currentHash:  log.current_hash,
+      previousHash: log.previous_hash,
+      isValid:      log.is_valid,
+      tamperType:   log.tamper_type,
+    }));
+
+    verificationResult = {
+      isValid:         data.isValid,
+      totalLogs:       data.totalLogs,
+      validLogs:       data.validLogs,
+      tamperedLogs:    data.tamperedLogs,
+      tamperedEntries: data.tamperedEntries,
+    };
+
+    lastVerificationTime = new Date().toLocaleTimeString();
+    setStatus(data.tamperedLogs > 0 ? 'compromised' : 'secure');
+    renderAll();
+  } catch (err) {
+    setStatus('idle');
+    alert('Cannot reach backend. Make sure app.py is running:\n  python app.py');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><polyline points="20 6 9 17 4 12"/></svg><span>Re-Verify</span>`;
+}
+
+// ── Add log entry → POST /add
+async function addLog() {
+  const eventType = document.getElementById('log-event-type').value.trim();
+  const message   = document.getElementById('log-message').value.trim();
+  const msg       = document.getElementById('addlog-msg');
+  if (!eventType || !message) { msg.style.color='#FB7185'; msg.textContent='Both fields are required.'; return; }
+  try {
+    await fetch(`${API_BASE}/add`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({event_type: eventType, message}) });
+    msg.style.color = '#86EFAC';
+    msg.textContent = `✓ Log added — event: ${eventType}`;
+    document.getElementById('log-event-type').value = '';
+    document.getElementById('log-message').value    = '';
+  } catch (err) { msg.style.color='#FB7185'; msg.textContent='Failed to reach backend.'; }
+}
+
+// ── Apply hash chain → POST /hash
+async function applyHashChain() {
+  const msg = document.getElementById('addlog-msg');
+  try {
+    await fetch(`${API_BASE}/hash`, { method:'POST' });
+    msg.style.color = '#5EEAD4';
+    msg.textContent = '✓ Hash chain applied — ready to verify.';
+  } catch (err) { msg.style.color='#FB7185'; msg.textContent='Failed to reach backend.'; }
+}
+
+function showShimmer() {
+  const lp = document.getElementById('log-entries-panel');
+  const hp = document.getElementById('hash-chain-panel');
+  lp.innerHTML = hp.innerHTML = [1,2,3,4,5].map(()=>`<div class="shimmer-row"></div>`).join('');
+  document.getElementById('verification-panel').innerHTML = `
+    <div class="verif-icon-wrap" style="background:rgba(129,140,248,0.15)">
+      <svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+    </div>
+    <div class="verif-status-title" style="color:#818CF8">Verifying Hash Chain...</div>
+    <div class="verif-status-sub">Recomputing SHA-256 hashes and validating chain integrity</div>`;
+}
+
+// ── Render all sections
+function renderAll() {
+  renderLogEntries();
+  renderHashChain();
+  renderVerification();
+  renderAlerts();
+  renderAuditReport();
+  updateInfoPanel();
+
+  if (verificationResult && verificationResult.tamperedEntries.length > 0) {
+    showSection('alerts-section-wrap');
+  }
+  showSection('audit-section-wrap');
+}
+
+// ── Log Entries
+function renderLogEntries() {
+  const panel = document.getElementById('log-entries-panel');
+  const displayLogs = viewMode === 'raw'
+    ? logs.map(l => ({ ...l, isValid: undefined, tamperType: undefined }))
+    : logs;
+
+  document.getElementById('log-count-badge').textContent = `${logs.length} entries`;
+  panel.innerHTML = displayLogs.map(log => {
+    const isTampered = log.isValid === false;
+    const isSelected = selectedLogId === log.id;
+    return `
+    <div class="log-entry ${isTampered?'tampered':''} ${isSelected?'selected':''}" onclick="selectLog(${log.id})">
+      <div style="min-width:0;flex:1">
+        <div class="log-meta">
+          <span>#${String(log.id).padStart(3,'0')}</span>
+          <span>${fmtTime(log.timestamp)}</span>
+        </div>
+        <div class="log-msg">${log.message}</div>
+        ${log.tamperType ? `<span class="log-tamper-badge">${log.tamperType}</span>` : ''}
+      </div>
+      <div style="flex-shrink:0;padding-top:2px">
+        ${log.isValid === undefined ? '' :
+          log.isValid
+          ? `<svg class="log-status-icon" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+          : `<svg class="log-status-icon" viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+        }
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Hash Chain
+function renderHashChain() {
+  const panel = document.getElementById('hash-chain-panel');
+  const displayLogs = viewMode === 'raw'
+    ? logs.map(l => ({ ...l, isValid: undefined, tamperType: undefined }))
+    : logs;
+
+  panel.innerHTML = displayLogs.map((log, i) => {
+    const validClass = log.isValid === false ? 'invalid' : log.isValid === true ? 'valid' : 'neutral';
+    const selClass   = selectedLogId === log.id ? 'selected' : '';
+    const hashClass  = log.isValid === false ? 'corrupted' : 'current';
+    const connector  = i < displayLogs.length - 1 ? `
+      <div class="chain-connector">
+        <svg viewBox="0 0 24 24" fill="none" stroke="${displayLogs[i+1]?.isValid===false?'#FB7185':displayLogs[i+1]?.isValid===true?'#86EFAC':'#4A4160'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
+          <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+        </svg>
+      </div>` : '';
+    return `
+    <div class="hash-block ${validClass} ${selClass}" style="margin:8px 12px" onclick="selectLog(${log.id})">
+      <div class="hash-block-header">
+        <span class="hash-block-id">Log #${log.id}${i===0?'<span class="genesis-badge">Genesis</span>':''}</span>
+        ${log.isValid===true
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="20 6 9 17 4 12"/></svg>`
+          : log.isValid===false
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+          : ''}
+      </div>
+      <div class="hash-field">
+        <label>Current Hash</label>
+        <div class="hash-value ${hashClass}" title="${log.currentHash}">${log.currentHash}</div>
+      </div>
+      <div class="hash-field">
+        <label>Previous Hash</label>
+        <div class="hash-value previous" title="${i===0?'Genesis Block':log.previousHash}">${i===0?'(Genesis Block)':log.previousHash}</div>
+      </div>
+      ${log.tamperType ? `
+      <div class="tamper-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Integrity Violation: ${log.tamperType.charAt(0).toUpperCase()+log.tamperType.slice(1)}
+      </div>` : ''}
+    </div>${connector}`;
+  }).join('');
+}
+
+// ── Verification panel
+function renderVerification() {
+  const panel = document.getElementById('verification-panel');
+  const r = verificationResult;
+  if (!r) return;
+
+  if (r.isValid) {
+    panel.innerHTML = `
+      <div class="verif-icon-wrap" style="background:rgba(134,239,172,0.15)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div>
+        <div class="verif-status-title" style="color:#86EFAC">Chain Intact</div>
+        <div class="verif-status-sub">All ${r.totalLogs} entries verified successfully</div>
+      </div>
+      <div class="verif-stats">
+        ${statRow('Total Logs', r.totalLogs, 'var(--fg)')}
+        ${statRow('Valid', r.validLogs, '#86EFAC')}
+        ${statRow('Tampered', '0', '#86EFAC')}
+      </div>`;
+  } else {
+    panel.innerHTML = `
+      <div class="verif-icon-wrap" style="background:rgba(251,113,133,0.15)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FB7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div>
+        <div class="verif-status-title" style="color:#FB7185">Tampering Detected</div>
+        <div class="verif-status-sub">Hash chain broken — logs unreliable</div>
+      </div>
+      <div class="verif-stats">
+        ${statRow('Total Logs', r.totalLogs, 'var(--fg)')}
+        ${statRow('Valid', r.validLogs, '#86EFAC')}
+        ${statRow('Tampered', r.tamperedLogs, '#FB7185')}
+      </div>`;
+  }
+}
+
+function statRow(label, value, color) {
+  return `<div class="verif-stat-row"><span class="verif-stat-label">${label}</span><span class="verif-stat-value" style="color:${color}">${value}</span></div>`;
+}
+
+// ── Alerts
+function renderAlerts() {
+  const r = verificationResult;
+  if (!r || r.tamperedEntries.length === 0) return;
+  document.getElementById('alert-count-label').textContent = `${r.tamperedEntries.length} integrity violation${r.tamperedEntries.length>1?'s':''} detected`;
+  document.getElementById('alerts-grid').innerHTML = r.tamperedEntries.map(e => `
+    <div class="alert-card section-animate">
+      <div class="alert-card-header">
+        <div class="alert-card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Log #${e.index}
+        </div>
+        <span class="alert-type-badge">${e.type}</span>
+      </div>
+      <p>${e.message}</p>
+      ${e.timestamp ? `<div class="alert-card-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Detected: ${fmtFull(e.timestamp)}</div>` : ''}
+    </div>`).join('');
+}
+
+// ── Audit Report
+function renderAuditReport() {
+  const r = verificationResult;
+  if (!r) return;
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card neutral">
+      <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+      <div class="stat-card-value">${r.totalLogs}</div>
+      <div class="stat-card-label">Total Logs Processed</div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div class="stat-card-value">${r.validLogs}</div>
+      <div class="stat-card-label">Valid Logs</div>
+    </div>
+    <div class="stat-card ${r.tamperedLogs>0?'danger':'success'}">
+      <div class="stat-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+      <div class="stat-card-value">${r.tamperedLogs}</div>
+      <div class="stat-card-label">Tampered Logs</div>
+    </div>`;
+
+  const sb = document.getElementById('summary-box');
+  sb.className = `summary-box ${r.isValid ? 'ok' : 'bad'}`;
+  sb.innerHTML = `<h3>Summary</h3><p>${r.isValid
+    ? `All ${r.totalLogs} log entries have been verified successfully. The hash chain is intact and no tampering has been detected. These logs can be trusted for forensic analysis.`
+    : `Verification detected ${r.tamperedLogs} compromised log entr${r.tamperedLogs>1?'ies':'y'} out of ${r.totalLogs} total. The hash chain has been broken, indicating unauthorized modification, deletion, or insertion of log data. These logs should be considered unreliable for forensic purposes.`
+  }</p>`;
+}
+
+// ── Download
+async function downloadReport() {
+  try {
+    const res  = await fetch(`${API_BASE}/report`);
+    const text = await res.text();
+    const blob = new Blob([text], {type:'text/plain'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `audit-report-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (err) { alert('Could not fetch report from backend.'); }
+}
+
+// ── View mode
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('toggle-raw').classList.toggle('active', mode==='raw');
+  document.getElementById('toggle-verified').classList.toggle('active', mode==='verified');
+  if (logs.length) { renderLogEntries(); renderHashChain(); }
+}
+
+// ── Select log
+function selectLog(id) {
+  selectedLogId = selectedLogId === id ? null : id;
+  renderLogEntries(); renderHashChain();
+}
+
+// ── Status
+function setStatus(s) {
+  appStatus = s;
+  const badge = document.getElementById('status-badge');
+  const label = document.getElementById('status-label');
+  badge.className = 'status-badge';
+  const map = {
+    idle:        ['status-idle',        'System Ready'],
+    uploading:   ['status-verifying',   'Uploading'],
+    verifying:   ['status-verifying',   'Verifying'],
+    secure:      ['status-secure',      'Secure'],
+    compromised: ['status-compromised', 'Compromised'],
+  };
+  const [cls, txt] = map[s] || map.idle;
+  badge.classList.add(cls);
+  label.textContent = txt;
+  document.getElementById('info-status').textContent = txt;
+  document.getElementById('info-status').style.color = s==='secure'?'#86EFAC':s==='compromised'?'#FB7185':s==='verifying'?'#818CF8':'var(--muted)';
+}
+
+function updateInfoPanel() {
+  document.getElementById('info-last-run').textContent = lastVerificationTime || '—';
+  document.getElementById('info-logs').textContent     = logs.length;
+  document.getElementById('info-chain').textContent    = logs.length;
+}
+
+// ── Show section
+function showSection(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.classList.add('section-animate');
+}
+
+// ── Formatters
+function fmtTime(ts) {
+  return new Date(ts.replace(' ','T')).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}
+function fmtFull(ts) {
+  return new Date(ts.replace(' ','T')).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}
+</script>
+</body>
+</html>
